@@ -1,0 +1,65 @@
+name: Build and Deploy ERPNext Jewelry
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "production/hspdiamonds-docker/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      IMAGE_NAME: yourcompany/erpnext-jewelry
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: vars
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: production/hspdiamonds-docker
+          file: production/hspdiamonds-docker/Dockerfile.backend
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:v15.${{ steps.vars.outputs.short_sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+  deploy_vps:
+    needs: docker
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /home/erpnext/docker/production/hspdiamonds-docker
+            sed -i "s|^CUSTOM_IMAGE=.*|CUSTOM_IMAGE=yourcompany/erpnext-jewelry|" .env
+            sed -i "s|^CUSTOM_TAG=.*|CUSTOM_TAG=v15.${GITHUB_SHA::7}|" .env
+            ./scripts/deploy.sh
