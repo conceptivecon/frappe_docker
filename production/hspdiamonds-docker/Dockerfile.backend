@@ -1,0 +1,13 @@
+FROM frappe/erpnext:v15.58.4
+
+USER root
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl jq \
+    && rm -rf /var/lib/apt/lists/*
+
+USER frappe
+WORKDIR /home/frappe/frappe-bench
+
+# Keep runtime override-friendly; default command mirrors upstream image behavior.
+CMD ["/home/frappe/frappe-bench/env/bin/gunicorn", "--chdir=/home/frappe/frappe-bench/sites", "--bind=0.0.0.0:8000", "--threads=2", "--workers=2", "--worker-class=gthread", "--worker-tmp-dir=/dev/shm", "--timeout=120", "--preload", "frappe.app:application"]
