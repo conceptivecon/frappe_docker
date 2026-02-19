@@ -8,6 +8,15 @@ start_ts=$(date +%s)
 
 mkdir -p apps sites mariadb assets logs redis-queue redis-cache backups
 
+if [[ ! -f .env ]]; then
+  if [[ -f .env.example ]]; then
+    cp .env.example .env
+  else
+    echo ".env not found and .env.example missing"
+    exit 1
+  fi
+fi
+
 if [[ ! -d apps/erpnext ]]; then
   git clone --depth 1 --branch version-15 https://github.com/frappe/erpnext apps/erpnext
 fi
