@@ -25,13 +25,32 @@ set +a
 
 # Use SSH for upstream app repos to avoid HTTPS credential prompts on hardened servers.
 ERPNEXT_REPO="${ERPNEXT_REPO:-git@github.com:frappe/erpnext.git}"
-INDIA_COMPLIANCE_REPO="${INDIA_COMPLIANCE_REPO:-git@github.com:frappe/india-compliance.git}"
+INDIA_COMPLIANCE_REPO="${INDIA_COMPLIANCE_REPO:-git@github.com:resilient-tech/india-compliance.git}"
+
+clone_repo() {
+  local repo_url="$1"
+  local branch="$2"
+  local target_dir="$3"
+
+  if GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch "${branch}" "${repo_url}" "${target_dir}"; then
+    return 0
+  fi
+
+  if [[ "${repo_url}" =~ ^git@github.com:(.+)\.git$ ]]; then
+    local https_url="https://github.com/${BASH_REMATCH[1]}.git"
+    echo "Primary clone failed, retrying via HTTPS: ${https_url}"
+    GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch "${branch}" "${https_url}" "${target_dir}"
+    return 0
+  fi
+
+  return 1
+}
 
 if [[ ! -d apps/erpnext ]]; then
-  GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch version-15 "${ERPNEXT_REPO}" apps/erpnext
+  clone_repo "${ERPNEXT_REPO}" "version-15" "apps/erpnext"
 fi
 if [[ ! -d apps/india-compliance ]]; then
-  GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch version-15 "${INDIA_COMPLIANCE_REPO}" apps/india-compliance
+  clone_repo "${INDIA_COMPLIANCE_REPO}" "version-15" "apps/india-compliance"
 fi
 
 if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
@@ -39,22 +58,9 @@ if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
   custom_branch="${CUSTOM_APP_BRANCH:-version-15}"
 
   if [[ ! -d "apps/${custom_name}/.git" ]]; then
-    GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch "${custom_branch}" "${CUSTOM_APP_REPO}" "apps/${custom_name}"
+    clone_repo "${CUSTOM_APP_REPO}" "${custom_branch}" "apps/${custom_name}"
   else
     GIT_TERMINAL_PROMPT=0 git -C "apps/${custom_name}" fetch --depth 1 origin "${custom_branch}"
-    git -C "apps/${custom_name}" checkout "${custom_branch}"
-    git -C "apps/${custom_name}" pull --ff-only origin "${custom_branch}"
-  fi
-fi
-
-if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
-  custom_name="${CUSTOM_APP_NAME:-$(basename "${CUSTOM_APP_REPO}" .git)}"
-  custom_branch="${CUSTOM_APP_BRANCH:-version-15}"
-
-  if [[ ! -d "apps/${custom_name}/.git" ]]; then
-    git clone --depth 1 --branch "${custom_branch}" "${CUSTOM_APP_REPO}" "apps/${custom_name}"
-  else
-    git -C "apps/${custom_name}" fetch --depth 1 origin "${custom_branch}"
     git -C "apps/${custom_name}" checkout "${custom_branch}"
     git -C "apps/${custom_name}" pull --ff-only origin "${custom_branch}"
   fi
