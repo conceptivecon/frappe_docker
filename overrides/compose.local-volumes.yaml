@@ -1,0 +1,60 @@
+services:
+  backend:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  configurator:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  frontend:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  websocket:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  queue-short:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  queue-long:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  scheduler:
+    volumes:
+      - ./local-data/sites:/home/frappe/frappe-bench/sites
+
+  db:
+    volumes:
+      - ./local-data/mariadb:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+      - --innodb-buffer-pool-size=${MARIADB_BUFFER_POOL_SIZE:-256M}
+      - --innodb-log-buffer-size=${MARIADB_LOG_BUFFER_SIZE:-32M}
+      - --max-connections=${MARIADB_MAX_CONNECTIONS:-120}
+
+  redis-cache:
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_CACHE_MAXMEMORY:-128mb}
+      - --maxmemory-policy
+      - ${REDIS_CACHE_POLICY:-allkeys-lru}
+
+  redis-queue:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - ${REDIS_QUEUE_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - ${REDIS_QUEUE_POLICY:-noeviction}
+    volumes:
+      - ./local-data/redis-queue:/data
