@@ -104,13 +104,6 @@ if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
   docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app hspdiamonds || true
 fi
 
-# Keep custom apps mutable: apply schema patches/code migrations after git updates
-docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" migrate
-
-if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
-  docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app hspdiamonds || true
-fi
-
 end_ts=$(date +%s)
 echo "Deploy complete in $((end_ts - start_ts))s"
 echo "Bench console: docker compose --env-file .env exec backend bench console"
