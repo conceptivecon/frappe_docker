@@ -4,7 +4,7 @@ Production Docker stack for `erp.hspdiamonds.com` (ERPNext v15 + India Complianc
 
 ## What this bundle includes
 
-- `Dockerfile.backend` - backend image based on `frappe/erpnext:v15.58.4`
+- `Dockerfile.backend` - backend image based on `frappe/erpnext:v15`
 - `docker-compose.yml` - MariaDB 10.6 + Redis + ERP services with memory caps
 - `.env.example` - runtime variables template
 - `apps.json` - app manifest (`erpnext`, `india-compliance`)

@@ -32,6 +32,13 @@ set -a
 source .env
 set +a
 
+# Normalize bad placeholder image defaults from older env files.
+if [[ "${CUSTOM_IMAGE:-}" == "yourcompany/erpnext-jewelry" || "${CUSTOM_IMAGE:-}" == "" ]]; then
+  CUSTOM_IMAGE="frappe/erpnext"
+fi
+if [[ "${CUSTOM_TAG:-}" == "latest" || "${CUSTOM_TAG:-}" == "v15.58.4" || "${CUSTOM_TAG:-}" == "" ]]; then
+  CUSTOM_TAG="v15"
+fi
 
 # Use SSH for upstream app repos to avoid HTTPS credential prompts on hardened servers.
 ERPNEXT_REPO="${ERPNEXT_REPO:-git@github.com:frappe/erpnext.git}"
@@ -87,8 +94,15 @@ if [[ -f apps.json ]]; then
 fi
 
 # Pull+build fast path for warm cache
-docker compose --env-file .env pull || true
-docker compose --env-file .env up -d --build --remove-orphans
+CUSTOM_IMAGE="${CUSTOM_IMAGE}" CUSTOM_TAG="${CUSTOM_TAG}" docker compose --env-file .env pull || true
+CUSTOM_IMAGE="${CUSTOM_IMAGE}" CUSTOM_TAG="${CUSTOM_TAG}" docker compose --env-file .env up -d --build --remove-orphans
+
+# Keep custom apps mutable: apply schema patches/code migrations after git updates
+docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" migrate
+
+if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
+  docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app hspdiamonds || true
+fi
 
 # Keep custom apps mutable: apply schema patches/code migrations after git updates
 docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" migrate

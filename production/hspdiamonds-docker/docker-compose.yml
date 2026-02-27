@@ -1,7 +1,7 @@
 name: erpnext-jewelry
 
 x-backend-image: &backend_image
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15.58.4}
+  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
   build:
     context: .
     dockerfile: Dockerfile.backend
