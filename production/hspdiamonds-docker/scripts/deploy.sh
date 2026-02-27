@@ -64,7 +64,8 @@ if [[ ! -d apps/india-compliance ]]; then
 fi
 
 if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
-  custom_name="${CUSTOM_APP_NAME:-hspdiamonds}"
+  # HSP convention: custom app repository must live at apps/hspdiamonds.
+  custom_name="hspdiamonds"
   custom_branch="${CUSTOM_APP_BRANCH:-version-15}"
 
   if [[ ! -d "apps/${custom_name}/.git" ]]; then
@@ -93,8 +94,7 @@ docker compose --env-file .env up -d --build --remove-orphans
 docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" migrate
 
 if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
-  custom_name="${CUSTOM_APP_NAME:-hspdiamonds}"
-  docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app "${custom_name}" || true
+  docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app hspdiamonds || true
 fi
 
 end_ts=$(date +%s)
