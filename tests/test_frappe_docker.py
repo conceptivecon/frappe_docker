@@ -149,3 +149,36 @@ class TestPostgres:
             "--admin-password",
             "admin",
         )
+
+
+def test_root_compose_has_no_conflict_markers_or_duplicate_worker_mem_limits():
+    compose_text = Path("compose.yaml").read_text()
+
+    assert "<<<<<<<" not in compose_text
+    assert "=======" not in compose_text
+    assert ">>>>>>>" not in compose_text
+
+    for service in ("queue-short", "queue-long", "scheduler"):
+        marker = f"\n  {service}:\n"
+        start = compose_text.find(marker)
+        assert start != -1, f"Service {service} missing from compose.yaml"
+        start += len(marker)
+
+        end = len(compose_text)
+        for next_service in (
+            "queue-short",
+            "queue-long",
+            "scheduler",
+            "frontend",
+            "websocket",
+        ):
+            if next_service == service:
+                continue
+            idx = compose_text.find(f"\n  {next_service}:\n", start)
+            if idx != -1:
+                end = min(end, idx)
+
+        service_block = compose_text[start:end]
+        assert service_block.count("mem_limit:") == 1, (
+            f"Service {service} must define mem_limit exactly once"
+        )
