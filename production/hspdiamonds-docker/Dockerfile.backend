@@ -1,4 +1,4 @@
-FROM frappe/erpnext:v15.58.4
+FROM frappe/erpnext:v15
 
 USER root
 
