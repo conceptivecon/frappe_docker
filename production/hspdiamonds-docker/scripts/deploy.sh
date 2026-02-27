@@ -47,6 +47,19 @@ if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
   fi
 fi
 
+if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
+  custom_name="${CUSTOM_APP_NAME:-$(basename "${CUSTOM_APP_REPO}" .git)}"
+  custom_branch="${CUSTOM_APP_BRANCH:-version-15}"
+
+  if [[ ! -d "apps/${custom_name}/.git" ]]; then
+    git clone --depth 1 --branch "${custom_branch}" "${CUSTOM_APP_REPO}" "apps/${custom_name}"
+  else
+    git -C "apps/${custom_name}" fetch --depth 1 origin "${custom_branch}"
+    git -C "apps/${custom_name}" checkout "${custom_branch}"
+    git -C "apps/${custom_name}" pull --ff-only origin "${custom_branch}"
+  fi
+fi
+
 if [[ -f apps.json ]]; then
   APPS_JSON_BASE64="$(base64 -w 0 apps.json)"
   if grep -q '^APPS_JSON_BASE64=' .env; then
