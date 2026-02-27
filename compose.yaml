@@ -1,8 +1,5 @@
 x-customizable-image: &customizable_image
-  # By default the image used only contains the `frappe` and `erpnext` apps.
-  # See https://github.com/frappe/frappe_docker/blob/main/docs/container-setup/02-build-setup.md#define-custom-apps
-  # about using custom images.
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
   pull_policy: ${PULL_POLICY:-always}
   restart: ${RESTART_POLICY:-unless-stopped}
 
@@ -85,6 +82,7 @@ services:
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
+        bench set-config -g chromium_path /usr/bin/chromium-headless-shell;
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -151,6 +149,7 @@ services:
     mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue short,default
+    mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
     <<: [*depends_on_configurator, *customizable_image]
@@ -159,6 +158,7 @@ services:
     mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue long,default,short
+    mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
     <<: [*depends_on_configurator, *customizable_image]
