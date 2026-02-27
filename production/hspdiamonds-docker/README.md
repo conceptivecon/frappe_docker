@@ -9,7 +9,7 @@ Production Docker stack for `erp.hspdiamonds.com` (ERPNext v15 + India Complianc
 - `.env.example` - runtime variables template
 - `apps.json` - app manifest (`erpnext`, `india-compliance`)
 - `setup.sh` - one-liner bootstrap entrypoint
-- `scripts/deploy.sh` - deploy + app checkout + env sync
+- `scripts/deploy.sh` - deploy + app checkout/update + migrate
 - `scripts/backup.sh` - backup flow (`down -> tar -> up`)
 - `scripts/restore.sh` - restore flow
 
@@ -41,13 +41,18 @@ Set at minimum:
 - `ADMIN_PASSWORD`
 - `DB_ROOT_PASSWORD`
 
+For mutable custom app updates:
+- `CUSTOM_APP_REPO=https://github.com/yourcompany/hspdiamonds.git`
+- `CUSTOM_APP_BRANCH=version-15`
+- `CUSTOM_APP_NAME=hspdiamonds`
+
 ### 3) Deploy
 
 ```bash
 ./scripts/deploy.sh
 ```
 
-This creates folders, checks out `erpnext` + `india-compliance` in `./apps`, updates `APPS_JSON_BASE64` from `apps.json`, and starts all services.
+This creates folders, checks out/updates apps in `./apps`, starts all services, runs `bench migrate`, and keeps custom app install/update workflow mutable (git-based, not image-immutable).
 
 ### 4) Validate and access bench
 
@@ -71,13 +76,15 @@ curl -sSL https://raw.githubusercontent.com/yourcompany/frappe_docker/main/produ
 
 ---
 
-## Hot app update
+## Hot app update (mutable custom app)
 
 ```bash
-cd apps/my-custom-app
+cd apps/hspdiamonds
 git pull
-docker compose --env-file .env restart backend websocket queue-short queue-long scheduler
+./scripts/deploy.sh
 ```
+
+`deploy.sh` runs migrate and restarts/updates the stack, so schema and patches apply after each app update.
 
 ---
 
@@ -96,22 +103,7 @@ Cron example:
 
 ---
 
-## Gaps in `apps.json` (important)
+## Notes on app strategy
 
-Current file:
-
-```json
-[
-  {"url": "https://github.com/frappe/erpnext", "branch": "version-15"},
-  {"url": "https://github.com/frappe/india-compliance", "branch": "version-15"}
-]
-```
-
-Known gaps to address for stricter production control:
-
-1. **No commit pinning**: branch-only references can drift. Prefer immutable SHAs/tags in your app checkout pipeline.
-2. **No custom jewelry apps listed**: add your private/custom app repositories for production parity.
-3. **`APPS_JSON_BASE64` not consumed by current Dockerfile build stage**: in this bundle app installation is performed at runtime (`create-site` + mounted `./apps`) rather than baked via build arg.
-4. **No explicit dependency lockfile for custom apps**: if your custom apps add Python/Node deps, define and test them in CI.
-
-If you want immutable builds, move to a build-time app-install flow (using `bench init --apps_path`) and push only fully baked images.
+- This setup intentionally keeps custom apps mutable and git-managed under `./apps`.
+- `APPS_JSON_BASE64` is retained for compatibility with existing tooling but custom app updates are designed to happen through `git pull` + `./scripts/deploy.sh`.

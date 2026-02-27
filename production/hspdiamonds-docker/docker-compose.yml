@@ -80,6 +80,7 @@ services:
         bench new-site "${SITE_NAME}" --mariadb-root-password "${DB_ROOT_PASSWORD}" --admin-password "${ADMIN_PASSWORD}" --db-name "${SITE_DB_NAME}" &&
         bench --site "${SITE_NAME}" install-app erpnext &&
         bench --site "${SITE_NAME}" install-app india_compliance &&
+        if [ -n "${CUSTOM_APP_NAME:-}" ]; then bench --site "${SITE_NAME}" install-app "${CUSTOM_APP_NAME}" || true; fi;
         bench --site "${SITE_NAME}" set-config host_name "https://${SITE_NAME}";
       else
         echo "Site ${SITE_NAME} already exists; skipping create-site.";
