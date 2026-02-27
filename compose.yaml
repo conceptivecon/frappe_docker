@@ -1,5 +1,5 @@
 x-customizable-image: &customizable_image
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15.58.4}
+  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
   pull_policy: ${PULL_POLICY:-always}
   restart: ${RESTART_POLICY:-unless-stopped}
 
@@ -146,7 +146,6 @@ services:
     <<: [*depends_on_configurator, *customizable_image]
     platform: linux/amd64
     container_name: queue-short
-    mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue short,default
     mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
@@ -155,7 +154,6 @@ services:
     <<: [*depends_on_configurator, *customizable_image]
     platform: linux/amd64
     container_name: queue-long
-    mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue long,default,short
     mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
