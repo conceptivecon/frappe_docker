@@ -1,5 +1,5 @@
 x-customizable-image: &customizable_image
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15.58.4}
+  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
   pull_policy: ${PULL_POLICY:-always}
   restart: ${RESTART_POLICY:-unless-stopped}
 
