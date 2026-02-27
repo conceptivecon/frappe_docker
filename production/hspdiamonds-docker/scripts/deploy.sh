@@ -22,11 +22,29 @@ set -a
 source .env
 set +a
 
+
+# Use SSH for upstream app repos to avoid HTTPS credential prompts on hardened servers.
+ERPNEXT_REPO="${ERPNEXT_REPO:-git@github.com:frappe/erpnext.git}"
+INDIA_COMPLIANCE_REPO="${INDIA_COMPLIANCE_REPO:-git@github.com:frappe/india-compliance.git}"
+
 if [[ ! -d apps/erpnext ]]; then
-  git clone --depth 1 --branch version-15 https://github.com/frappe/erpnext apps/erpnext
+  GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch version-15 "${ERPNEXT_REPO}" apps/erpnext
 fi
 if [[ ! -d apps/india-compliance ]]; then
-  git clone --depth 1 --branch version-15 https://github.com/frappe/india-compliance apps/india-compliance
+  GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch version-15 "${INDIA_COMPLIANCE_REPO}" apps/india-compliance
+fi
+
+if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
+  custom_name="${CUSTOM_APP_NAME:-$(basename "${CUSTOM_APP_REPO}" .git)}"
+  custom_branch="${CUSTOM_APP_BRANCH:-version-15}"
+
+  if [[ ! -d "apps/${custom_name}/.git" ]]; then
+    GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch "${custom_branch}" "${CUSTOM_APP_REPO}" "apps/${custom_name}"
+  else
+    GIT_TERMINAL_PROMPT=0 git -C "apps/${custom_name}" fetch --depth 1 origin "${custom_branch}"
+    git -C "apps/${custom_name}" checkout "${custom_branch}"
+    git -C "apps/${custom_name}" pull --ff-only origin "${custom_branch}"
+  fi
 fi
 
 if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
