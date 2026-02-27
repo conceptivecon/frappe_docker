@@ -11,19 +11,76 @@ x-depends-on-configurator: &depends_on_configurator
     configurator:
       condition: service_completed_successfully
 
+x-bench-volumes: &bench_volumes
+  - /home/erpnext/sites:/home/frappe/frappe-bench/sites
+  - /home/erpnext/logs:/home/frappe/frappe-bench/logs
+  - /home/erpnext/apps:/home/frappe/frappe-bench/apps
+  - /home/erpnext/assets:/home/frappe/frappe-bench/sites/assets
+  - /home/erpnext/.ssh:/home/frappe/.ssh:ro
+
 x-backend-defaults: &backend_defaults
   <<: [*depends_on_configurator, *customizable_image]
-  volumes:
-    - sites:/home/frappe/frappe-bench/sites
+  platform: linux/amd64
+  volumes: *bench_volumes
 
 services:
+  db:
+    image: mariadb:10.6
+    container_name: db
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 2g
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+    volumes:
+      - /home/erpnext/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--password=${DB_PASSWORD:-admin}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis-cache:
+    image: redis:6.2-alpine
+    container_name: redis-cache
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 256m
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - /home/erpnext/redis:/data
+
+  redis-queue:
+    image: redis:6.2-alpine
+    container_name: redis-queue
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 256m
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - /home/erpnext/redis:/data
+
+  redis-socketio:
+    image: redis:6.2-alpine
+    container_name: redis-socketio
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 256m
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - /home/erpnext/redis:/data
+
   configurator:
-    <<: *backend_defaults
+    <<: *customizable_image
     platform: linux/amd64
+    container_name: configurator
+    mem_limit: 1g
+    volumes: *bench_volumes
     entrypoint:
       - bash
       - -c
-    # add redis_socketio for backward compatibility
     command:
       - >
         ls -1 apps > sites/apps.txt;
@@ -31,65 +88,79 @@ services:
         bench set-config -gp db_port $$DB_PORT;
         bench set-config -g redis_cache "redis://$$REDIS_CACHE";
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
-        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
+        bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
     environment:
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      REDIS_CACHE: ${REDIS_CACHE:-}
-      REDIS_QUEUE: ${REDIS_QUEUE:-}
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis-cache:6379
+      REDIS_QUEUE: redis-queue:6379
+      REDIS_SOCKETIO: redis-socketio:6379
       SOCKETIO_PORT: 9000
-    depends_on: {}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      redis-queue:
+        condition: service_started
+      redis-socketio:
+        condition: service_started
     restart: on-failure
 
   backend:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: backend
+    mem_limit: 4g
 
   frontend:
     <<: *customizable_image
     platform: linux/amd64
+    container_name: frontend
+    restart: ${RESTART_POLICY:-unless-stopped}
     command:
       - nginx-entrypoint.sh
+    mem_limit: 1g
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
-      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER:-$$host}
+      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER:-erp.hspdiamonds.com}
       UPSTREAM_REAL_IP_ADDRESS: ${UPSTREAM_REAL_IP_ADDRESS:-127.0.0.1}
       UPSTREAM_REAL_IP_HEADER: ${UPSTREAM_REAL_IP_HEADER:-X-Forwarded-For}
       UPSTREAM_REAL_IP_RECURSIVE: ${UPSTREAM_REAL_IP_RECURSIVE:-off}
       PROXY_READ_TIMEOUT: ${PROXY_READ_TIMEOUT:-120}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50m}
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
+    volumes: *bench_volumes
     depends_on:
       - backend
       - websocket
+    ports:
+      - "127.0.0.1:${HTTP_PUBLISH_PORT:-8080}:8080"
 
   websocket:
     <<: [*depends_on_configurator, *customizable_image]
     platform: linux/amd64
+    container_name: websocket
+    mem_limit: 1g
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
+    volumes: *bench_volumes
 
   queue-short:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: queue-short
+    mem_limit: 1g
     command: bench worker --queue short,default
 
   queue-long:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: queue-long
+    mem_limit: 1g
     command: bench worker --queue long,default,short
 
   scheduler:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: scheduler
+    mem_limit: 1g
     command: bench schedule
-
-# ERPNext requires local assets access (Frappe does not)
-volumes:
-  sites:
