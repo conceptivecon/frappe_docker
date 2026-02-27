@@ -1,56 +1,52 @@
-# Harika Solitaire Privé - Production Deployment (HSP)
+# Harika Solitaire Privé (HSP) Production Deployment
 
-This deployment keeps all persistent ERPNext data under `/home/erpnext` and is designed for single-server production use.
+This repository can run as a single-server ERPNext v15 deployment with persistent bind mounts under `/home/erpnext`.
 
-## Directory layout
+## 1) Create required directories
 
 ```bash
 mkdir -p /home/erpnext/{sites,logs,assets,apps,mariadb,redis,docker,.ssh}
 ```
 
-Expected structure:
+## 2) First run
 
-- `/home/erpnext/sites`
-- `/home/erpnext/logs`
-- `/home/erpnext/assets`
-- `/home/erpnext/apps`
-- `/home/erpnext/mariadb`
-- `/home/erpnext/redis`
-- `/home/erpnext/.ssh`
-
-## First run
-
-From your repo root (`/home/erpnext/docker`):
+Run from the repository root (typically `/home/erpnext/docker`):
 
 ```bash
 docker compose up -d
 ```
 
-## Enter backend container
+## 3) Enter backend container
 
 ```bash
 docker exec -it backend bash
 ```
 
-## Create default site
+## 4) Create site
 
 ```bash
 bench new-site erp.hspdiamonds.com
 ```
 
-## Install apps
+## 5) Install ERPNext
 
 ```bash
 bench --site erp.hspdiamonds.com install-app erpnext
 ```
 
-Install custom app (after cloning into `/home/erpnext/apps/hspdiamonds`):
+## 6) Install India Compliance
+
+```bash
+bench --site erp.hspdiamonds.com install-app india_compliance
+```
+
+## 7) Install custom app
 
 ```bash
 bench --site erp.hspdiamonds.com install-app hspdiamonds
 ```
 
-## Git-based app updates
+## 8) Git-managed app updates (mutable custom app)
 
 ```bash
 cd /home/erpnext/apps/hspdiamonds
@@ -58,25 +54,8 @@ git pull
 docker restart backend
 ```
 
-If needed after updates:
+## Notes
 
-```bash
-docker exec -it backend bench --site erp.hspdiamonds.com migrate
-```
-
-## Cloudflare + local NGINX reverse proxy
-
-- Point Cloudflare DNS `erp.hspdiamonds.com` to your VPS.
-- Keep this stack bound on localhost (`127.0.0.1:${HTTP_PORT:-8080}`) and proxy with host NGINX.
-- In host NGINX, pass `Host`, `X-Forwarded-For`, and `X-Forwarded-Proto` headers.
-
-## Persistence guarantee
-
-The stack uses bind mounts only (no Docker named volumes), so data survives:
-
-```bash
-docker compose down
-docker compose up -d
-```
-
-as long as `/home/erpnext/*` directories are preserved.
+- The stack is configured for host reverse proxy mode (`127.0.0.1:8080`) so traffic can flow via Cloudflare -> host NGINX -> Docker.
+- SSH keys are mounted read-only from `/home/erpnext/.ssh` into `/home/frappe/.ssh`, allowing in-container git SSH usage.
+- Persistent storage is bind-mounted under `/home/erpnext`, so `docker compose down` and `docker compose up` keep data intact.

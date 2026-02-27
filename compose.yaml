@@ -9,20 +9,73 @@ x-depends-on-configurator: &depends_on_configurator
       condition: service_completed_successfully
 
 x-bench-volumes: &bench_volumes
-  - ${ERPNEXT_ROOT:-/home/erpnext}/sites:/home/frappe/frappe-bench/sites
-  - ${ERPNEXT_ROOT:-/home/erpnext}/logs:/home/frappe/frappe-bench/logs
-  - ${ERPNEXT_ROOT:-/home/erpnext}/apps:/home/frappe/frappe-bench/apps
-  - ${ERPNEXT_ROOT:-/home/erpnext}/assets:/home/frappe/frappe-bench/sites/assets
-  - ${ERPNEXT_ROOT:-/home/erpnext}/.ssh:/home/frappe/.ssh:ro
+  - /home/erpnext/sites:/home/frappe/frappe-bench/sites
+  - /home/erpnext/logs:/home/frappe/frappe-bench/logs
+  - /home/erpnext/apps:/home/frappe/frappe-bench/apps
+  - /home/erpnext/assets:/home/frappe/frappe-bench/sites/assets
+  - /home/erpnext/.ssh:/home/frappe/.ssh:ro
 
 x-backend-defaults: &backend_defaults
   <<: [*depends_on_configurator, *customizable_image]
+  platform: linux/amd64
+  mem_limit: 4g
   volumes: *bench_volumes
 
 services:
+  db:
+    image: mariadb:10.6
+    container_name: db
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 2g
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+    volumes:
+      - /home/erpnext/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--password=${DB_PASSWORD:-admin}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis-cache:
+    image: redis:6.2-alpine
+    container_name: redis-cache
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 256m
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - /home/erpnext/redis:/data
+
+  redis-queue:
+    image: redis:6.2-alpine
+    container_name: redis-queue
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 256m
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - /home/erpnext/redis:/data
+
+  redis-socketio:
+    image: redis:6.2-alpine
+    container_name: redis-socketio
+    restart: ${RESTART_POLICY:-unless-stopped}
+    mem_limit: 256m
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - /home/erpnext/redis:/data
+
   configurator:
-    <<: *backend_defaults
+    <<: *customizable_image
+    platform: linux/amd64
     container_name: configurator
+    mem_limit: 1g
+    volumes: *bench_volumes
     entrypoint:
       - bash
       - -c
@@ -33,34 +86,39 @@ services:
         bench set-config -gp db_port $$DB_PORT;
         bench set-config -g redis_cache "redis://$$REDIS_CACHE";
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
-        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
+        bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
         bench set-config -g chromium_path /usr/bin/chromium-headless-shell;
     environment:
-      DB_HOST: ${DB_HOST:-db}
-      DB_PORT: ${DB_PORT:-3306}
-      REDIS_CACHE: ${REDIS_CACHE:-redis:6379}
-      REDIS_QUEUE: ${REDIS_QUEUE:-redis:6379}
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis-cache:6379
+      REDIS_QUEUE: redis-queue:6379
+      REDIS_SOCKETIO: redis-socketio:6379
       SOCKETIO_PORT: 9000
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      redis-cache:
+        condition: service_started
+      redis-queue:
+        condition: service_started
+      redis-socketio:
         condition: service_started
     restart: on-failure
 
   backend:
     <<: *backend_defaults
     container_name: backend
-    mem_limit: ${BACKEND_MEM_LIMIT:-4g}
 
   frontend:
     <<: *customizable_image
+    platform: linux/amd64
     container_name: frontend
+    restart: ${RESTART_POLICY:-unless-stopped}
     command:
       - nginx-entrypoint.sh
-    ports:
-      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
+    mem_limit: 1g
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
@@ -70,78 +128,39 @@ services:
       UPSTREAM_REAL_IP_RECURSIVE: ${UPSTREAM_REAL_IP_RECURSIVE:-off}
       PROXY_READ_TIMEOUT: ${PROXY_READ_TIMEOUT:-120}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50m}
-    volumes:
-      - ${ERPNEXT_ROOT:-/home/erpnext}/sites:/home/frappe/frappe-bench/sites
-      - ${ERPNEXT_ROOT:-/home/erpnext}/assets:/home/frappe/frappe-bench/sites/assets
-      - ${ERPNEXT_ROOT:-/home/erpnext}/logs:/home/frappe/frappe-bench/logs
+    volumes: *bench_volumes
     depends_on:
       - backend
       - websocket
-    mem_limit: ${FRONTEND_MEM_LIMIT:-512m}
+    ports:
+      - "127.0.0.1:${HTTP_PUBLISH_PORT:-8080}:8080"
 
   websocket:
     <<: [*depends_on_configurator, *customizable_image]
+    platform: linux/amd64
     container_name: websocket
+    mem_limit: 1g
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
     volumes: *bench_volumes
-    mem_limit: ${WEBSOCKET_MEM_LIMIT:-512m}
 
   queue-short:
     <<: *backend_defaults
     container_name: queue-short
+    mem_limit: 1g
     command: bench worker --queue short,default
     mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
     <<: *backend_defaults
     container_name: queue-long
+    mem_limit: 1g
     command: bench worker --queue long,default,short
     mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
     <<: *backend_defaults
     container_name: scheduler
+    mem_limit: 1g
     command: bench schedule
-    mem_limit: ${SCHEDULER_MEM_LIMIT:-512m}
-
-  db:
-    container_name: db
-    image: mariadb:10.11
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed
-      - --max-allowed-packet=64M
-      - --innodb-buffer-pool-size=${MARIADB_BUFFER_POOL_SIZE:-1024M}
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123}
-      MARIADB_AUTO_UPGRADE: 1
-    volumes:
-      - ${ERPNEXT_ROOT:-/home/erpnext}/mariadb:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      start_period: 5s
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-    mem_limit: ${DB_MEM_LIMIT:-2g}
-
-  redis:
-    container_name: redis
-    image: redis:7-alpine
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --maxmemory
-      - ${REDIS_MAXMEMORY:-256mb}
-      - --maxmemory-policy
-      - ${REDIS_POLICY:-allkeys-lru}
-    volumes:
-      - ${ERPNEXT_ROOT:-/home/erpnext}/redis:/data
-    restart: unless-stopped
-    mem_limit: ${REDIS_MEM_LIMIT:-256m}
