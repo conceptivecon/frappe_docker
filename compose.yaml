@@ -15,11 +15,6 @@ x-bench-volumes: &bench_volumes
   - /home/erpnext/assets:/home/frappe/frappe-bench/sites/assets
   - /home/erpnext/.ssh:/home/frappe/.ssh:ro
 
-x-backend-defaults: &backend_defaults
-  <<: [*depends_on_configurator, *customizable_image]
-  platform: linux/amd64
-  volumes: *bench_volumes
-
 services:
   db:
     image: mariadb:10.6
@@ -107,9 +102,11 @@ services:
     restart: on-failure
 
   backend:
-    <<: *backend_defaults
+    <<: [*depends_on_configurator, *customizable_image]
+    platform: linux/amd64
     container_name: backend
     mem_limit: 4g
+    volumes: *bench_volumes
 
   frontend:
     <<: *customizable_image
@@ -146,21 +143,27 @@ services:
     volumes: *bench_volumes
 
   queue-short:
-    <<: *backend_defaults
+    <<: [*depends_on_configurator, *customizable_image]
+    platform: linux/amd64
     container_name: queue-short
     mem_limit: 1g
+    volumes: *bench_volumes
     command: bench worker --queue short,default
     mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
-    <<: *backend_defaults
+    <<: [*depends_on_configurator, *customizable_image]
+    platform: linux/amd64
     container_name: queue-long
     mem_limit: 1g
+    volumes: *bench_volumes
     command: bench worker --queue long,default,short
     mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
-    <<: *backend_defaults
+    <<: [*depends_on_configurator, *customizable_image]
+    platform: linux/amd64
     container_name: scheduler
     mem_limit: 1g
+    volumes: *bench_volumes
     command: bench schedule
