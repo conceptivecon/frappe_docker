@@ -22,7 +22,7 @@ Production Docker stack for `erp.hspdiamonds.com` (ERPNext v15 + India Complianc
 ```bash
 sudo mkdir -p /home/erpnext && sudo chown -R $USER:$USER /home/erpnext
 cd /home/erpnext
-git clone https://github.com/yourcompany/frappe_docker.git docker
+git clone https://github.com/conceptivecon/frappe_docker.git docker
 cd docker/production/hspdiamonds-docker
 ```
 
@@ -42,7 +42,8 @@ Set at minimum:
 - `DB_ROOT_PASSWORD`
 
 For mutable custom app updates:
-- `CUSTOM_APP_REPO=https://github.com/yourcompany/hspdiamonds.git`
+- Optional: `HOST_APPS_DIR=/home/erpnext/apps` (default) keeps app repos in `/home/erpnext/apps` while compose mounts `./apps` via symlink.
+- `CUSTOM_APP_REPO=git@github.com:conceptivecon/jewelry-erp.git`
 - `CUSTOM_APP_BRANCH=version-15`
 - `CUSTOM_APP_NAME=hspdiamonds`
 
@@ -71,7 +72,7 @@ Route `erp.hspdiamonds.com` -> VPS `:8080` (or `HTTP_PORT`), and terminate TLS a
 ## One-liner bootstrap
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourcompany/frappe_docker/main/production/hspdiamonds-docker/setup.sh | bash
+curl -sSL https://raw.githubusercontent.com/conceptivecon/frappe_docker/feature-frappe-docker-hspdiamonds/production/hspdiamonds-docker/setup.sh | bash
 ```
 
 ---
@@ -79,7 +80,7 @@ curl -sSL https://raw.githubusercontent.com/yourcompany/frappe_docker/main/produ
 ## Hot app update (mutable custom app)
 
 ```bash
-cd apps/hspdiamonds
+cd /home/erpnext/apps/hspdiamonds
 git pull
 ./scripts/deploy.sh
 ```

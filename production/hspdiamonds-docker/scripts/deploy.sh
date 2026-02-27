@@ -6,7 +6,17 @@ cd "$ROOT_DIR"
 
 start_ts=$(date +%s)
 
-mkdir -p apps sites mariadb assets logs redis-queue redis-cache backups
+HOST_APPS_DIR="${HOST_APPS_DIR:-/home/erpnext/apps}"
+mkdir -p sites mariadb assets logs redis-queue redis-cache backups
+
+if [[ -n "${HOST_APPS_DIR}" ]]; then
+  mkdir -p "${HOST_APPS_DIR}"
+  if [[ -L apps || ! -e apps ]]; then
+    ln -sfn "${HOST_APPS_DIR}" apps
+  fi
+fi
+
+mkdir -p apps
 
 if [[ ! -f .env ]]; then
   if [[ -f .env.example ]]; then
@@ -54,7 +64,8 @@ if [[ ! -d apps/india-compliance ]]; then
 fi
 
 if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
-  custom_name="${CUSTOM_APP_NAME:-$(basename "${CUSTOM_APP_REPO}" .git)}"
+  # HSP convention: custom app repository must live at apps/hspdiamonds.
+  custom_name="hspdiamonds"
   custom_branch="${CUSTOM_APP_BRANCH:-version-15}"
 
   if [[ ! -d "apps/${custom_name}/.git" ]]; then
@@ -83,8 +94,7 @@ docker compose --env-file .env up -d --build --remove-orphans
 docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" migrate
 
 if [[ -n "${CUSTOM_APP_REPO:-}" ]]; then
-  custom_name="${CUSTOM_APP_NAME:-$(basename "${CUSTOM_APP_REPO}" .git)}"
-  docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app "${custom_name}" || true
+  docker compose --env-file .env exec -T backend bench --site "${SITE_NAME}" install-app hspdiamonds || true
 fi
 
 end_ts=$(date +%s)
