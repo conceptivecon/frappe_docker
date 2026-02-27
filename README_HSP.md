@@ -59,3 +59,11 @@ docker restart backend
 - The stack is configured for host reverse proxy mode (`127.0.0.1:8080`) so traffic can flow via Cloudflare -> host NGINX -> Docker.
 - SSH keys are mounted read-only from `/home/erpnext/.ssh` into `/home/frappe/.ssh`, allowing in-container git SSH usage.
 - Persistent storage is bind-mounted under `/home/erpnext`, so `docker compose down` and `docker compose up` keep data intact.
+- Ensure `.env` has valid image defaults before first start:
+
+  ```env
+  CUSTOM_IMAGE=frappe/erpnext
+  CUSTOM_TAG=v15
+  ```
+
+- Set `DB_ROOT_PASSWORD` in `.env`; MariaDB root auth uses this key in the root `compose.yaml`.

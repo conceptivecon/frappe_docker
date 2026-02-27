@@ -27,12 +27,12 @@ services:
       - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
-      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-admin}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${DB_PASSWORD:-admin}}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${DB_PASSWORD:-admin}}
     volumes:
       - /home/erpnext/mariadb:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--password=${DB_PASSWORD:-admin}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--password=${DB_ROOT_PASSWORD:-${DB_PASSWORD:-admin}}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -146,6 +146,7 @@ services:
     <<: [*depends_on_configurator, *customizable_image]
     platform: linux/amd64
     container_name: queue-short
+    mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue short,default
     mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
@@ -154,6 +155,7 @@ services:
     <<: [*depends_on_configurator, *customizable_image]
     platform: linux/amd64
     container_name: queue-long
+    mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue long,default,short
     mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
