@@ -1,8 +1,5 @@
 x-customizable-image: &customizable_image
-  # By default the image used only contains the `frappe` and `erpnext` apps.
-  # See https://github.com/frappe/frappe_docker/blob/main/docs/container-setup/02-build-setup.md#define-custom-apps
-  # about using custom images.
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15.58.4}
   pull_policy: ${PULL_POLICY:-always}
   restart: ${RESTART_POLICY:-unless-stopped}
 
@@ -11,19 +8,24 @@ x-depends-on-configurator: &depends_on_configurator
     configurator:
       condition: service_completed_successfully
 
+x-bench-volumes: &bench_volumes
+  - ${ERPNEXT_ROOT:-/home/erpnext}/sites:/home/frappe/frappe-bench/sites
+  - ${ERPNEXT_ROOT:-/home/erpnext}/logs:/home/frappe/frappe-bench/logs
+  - ${ERPNEXT_ROOT:-/home/erpnext}/apps:/home/frappe/frappe-bench/apps
+  - ${ERPNEXT_ROOT:-/home/erpnext}/assets:/home/frappe/frappe-bench/sites/assets
+  - ${ERPNEXT_ROOT:-/home/erpnext}/.ssh:/home/frappe/.ssh:ro
+
 x-backend-defaults: &backend_defaults
   <<: [*depends_on_configurator, *customizable_image]
-  volumes:
-    - sites:/home/frappe/frappe-bench/sites
+  volumes: *bench_volumes
 
 services:
   configurator:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: configurator
     entrypoint:
       - bash
       - -c
-    # add redis_socketio for backward compatibility
     command:
       - >
         ls -1 apps > sites/apps.txt;
@@ -35,62 +37,111 @@ services:
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
         bench set-config -g chromium_path /usr/bin/chromium-headless-shell;
     environment:
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      REDIS_CACHE: ${REDIS_CACHE:-}
-      REDIS_QUEUE: ${REDIS_QUEUE:-}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      REDIS_CACHE: ${REDIS_CACHE:-redis:6379}
+      REDIS_QUEUE: ${REDIS_QUEUE:-redis:6379}
       SOCKETIO_PORT: 9000
-    depends_on: {}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: on-failure
 
   backend:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: backend
+    mem_limit: ${BACKEND_MEM_LIMIT:-4g}
 
   frontend:
     <<: *customizable_image
-    platform: linux/amd64
+    container_name: frontend
     command:
       - nginx-entrypoint.sh
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
-      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER:-$$host}
+      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER:-erp.hspdiamonds.com}
       UPSTREAM_REAL_IP_ADDRESS: ${UPSTREAM_REAL_IP_ADDRESS:-127.0.0.1}
       UPSTREAM_REAL_IP_HEADER: ${UPSTREAM_REAL_IP_HEADER:-X-Forwarded-For}
       UPSTREAM_REAL_IP_RECURSIVE: ${UPSTREAM_REAL_IP_RECURSIVE:-off}
       PROXY_READ_TIMEOUT: ${PROXY_READ_TIMEOUT:-120}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-50m}
     volumes:
-      - sites:/home/frappe/frappe-bench/sites
+      - ${ERPNEXT_ROOT:-/home/erpnext}/sites:/home/frappe/frappe-bench/sites
+      - ${ERPNEXT_ROOT:-/home/erpnext}/assets:/home/frappe/frappe-bench/sites/assets
+      - ${ERPNEXT_ROOT:-/home/erpnext}/logs:/home/frappe/frappe-bench/logs
     depends_on:
       - backend
       - websocket
+    mem_limit: ${FRONTEND_MEM_LIMIT:-512m}
 
   websocket:
     <<: [*depends_on_configurator, *customizable_image]
-    platform: linux/amd64
+    container_name: websocket
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
+    volumes: *bench_volumes
+    mem_limit: ${WEBSOCKET_MEM_LIMIT:-512m}
 
   queue-short:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: queue-short
     command: bench worker --queue short,default
+    mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: queue-long
     command: bench worker --queue long,default,short
+    mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
     <<: *backend_defaults
-    platform: linux/amd64
+    container_name: scheduler
     command: bench schedule
+    mem_limit: ${SCHEDULER_MEM_LIMIT:-512m}
 
-# ERPNext requires local assets access (Frappe does not)
-volumes:
-  sites:
+  db:
+    container_name: db
+    image: mariadb:10.11
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+      - --max-allowed-packet=64M
+      - --innodb-buffer-pool-size=${MARIADB_BUFFER_POOL_SIZE:-1024M}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123}
+      MARIADB_AUTO_UPGRADE: 1
+    volumes:
+      - ${ERPNEXT_ROOT:-/home/erpnext}/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: ${DB_MEM_LIMIT:-2g}
+
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - ${REDIS_POLICY:-allkeys-lru}
+    volumes:
+      - ${ERPNEXT_ROOT:-/home/erpnext}/redis:/data
+    restart: unless-stopped
+    mem_limit: ${REDIS_MEM_LIMIT:-256m}
