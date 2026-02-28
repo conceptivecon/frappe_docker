@@ -18,6 +18,8 @@ docker compose up -d
 
 On first run, `app-bootstrap` clones `frappe`, `erpnext`, and `india-compliance`
 into `/home/erpnext/apps` if those folders are missing.
+If `/home/erpnext/apps/<app>` exists and is not a git repository, bootstrap will
+fail with a clear error so you can clean that folder first.
 
 ## 3) Enter backend container
 
