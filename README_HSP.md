@@ -16,6 +16,9 @@ Run from the repository root (typically `/home/erpnext/docker`):
 docker compose up -d
 ```
 
+On first run, `app-bootstrap` clones `frappe`, `erpnext`, and `india-compliance`
+into `/home/erpnext/apps` if those folders are missing.
+
 ## 3) Enter backend container
 
 ```bash
@@ -52,6 +55,27 @@ bench --site erp.hspdiamonds.com install-app hspdiamonds
 cd /home/erpnext/apps/hspdiamonds
 git pull
 docker restart backend
+```
+
+## 9) Cleanup and fresh start
+
+From the repo root (`/home/erpnext/docker`):
+
+```bash
+cd production/hspdiamonds-docker
+
+# Safe cleanup (containers/networks only)
+./scripts/cleanup_fresh_start.sh --force
+
+# Full reset (includes image prune + wipe /home/erpnext persistent data)
+./scripts/cleanup_fresh_start.sh --force --purge-images --purge-data
+```
+
+After cleanup, start again:
+
+```bash
+cd /home/erpnext/docker
+docker compose --env-file .env up -d
 ```
 
 ## Notes

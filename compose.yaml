@@ -6,6 +6,22 @@ x-bench-volumes: &bench_volumes
   - /home/erpnext/.ssh:/home/frappe/.ssh:ro
 
 services:
+  app-bootstrap:
+    image: alpine/git:2.47.2
+    container_name: app-bootstrap
+    restart: "no"
+    entrypoint:
+      - sh
+      - -ec
+    command: >
+      mkdir -p /apps;
+      if [ ! -d /apps/frappe/.git ]; then git clone --depth 1 --branch version-15 https://github.com/frappe/frappe.git /apps/frappe; fi;
+      if [ ! -d /apps/erpnext/.git ]; then git clone --depth 1 --branch version-15 https://github.com/frappe/erpnext.git /apps/erpnext; fi;
+      if [ ! -d /apps/india-compliance/.git ]; then git clone --depth 1 --branch version-15 https://github.com/resilient-tech/india-compliance.git /apps/india-compliance; fi;
+      echo "app-bootstrap completed";
+    volumes:
+      - /home/erpnext/apps:/apps
+
   db:
     image: mariadb:10.6
     container_name: db
@@ -53,7 +69,7 @@ services:
   configurator:
     image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
-    restart: on-failure
+    restart: "no"
     platform: linux/amd64
     container_name: configurator
     volumes: *bench_volumes
@@ -62,6 +78,7 @@ services:
       - -c
     command:
       - >
+        set -e;
         ls -1 apps > sites/apps.txt;
         bench set-config -g db_host $$DB_HOST;
         bench set-config -gp db_port $$DB_PORT;
@@ -69,7 +86,7 @@ services:
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
-        bench set-config -g chromium_path /usr/bin/chromium-headless-shell;
+        echo "configurator completed";
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -78,6 +95,8 @@ services:
       REDIS_SOCKETIO: redis-socketio:6379
       SOCKETIO_PORT: 9000
     depends_on:
+      app-bootstrap:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis-cache:
