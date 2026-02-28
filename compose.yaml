@@ -17,30 +17,30 @@ services:
       set -e;
       mkdir -p /apps;
       clone_or_update() {
-        repo="$1"; branch="$2"; dir="$3";
-        if [ -d "$dir/.git" ]; then
-          git -C "$dir" fetch --depth 1 origin "$branch" || git -C "$dir" fetch origin;
-          git -C "$dir" checkout "$branch" || git -C "$dir" checkout -B "$branch" "origin/$branch";
-          git -C "$dir" reset --hard "origin/$branch" || true;
+        repo="$$1"; branch="$$2"; dir="$$3";
+        if [ -d "$$dir/.git" ]; then
+          git -C "$$dir" fetch --depth 1 origin "$$branch" || git -C "$$dir" fetch origin;
+          git -C "$$dir" checkout "$$branch" || git -C "$$dir" checkout -B "$$branch" "origin/$$branch";
+          git -C "$$dir" reset --hard "origin/$$branch" || true;
           return 0;
         fi;
-        if [ -d "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
-          echo "ERROR: $dir exists and is not a git repo. Move/delete it before bootstrap.";
+        if [ -d "$$dir" ] && [ -n "$$(ls -A "$$dir" 2>/dev/null)" ]; then
+          echo "ERROR: $$dir exists and is not a git repo. Move/delete it before bootstrap.";
           return 1;
         fi;
-        rm -rf "$dir";
-        if git clone --depth 1 --branch "$branch" "$repo" "$dir"; then
+        rm -rf "$$dir";
+        if git clone --depth 1 --branch "$$branch" "$$repo" "$$dir"; then
           return 0;
         fi;
-        case "$repo" in
+        case "$$repo" in
           https://github.com/*)
-            alt="git@github.com:${repo#https://github.com/}" ;;
+            alt="git@github.com:$${repo#https://github.com/}" ;;
           git@github.com:*)
-            alt="https://github.com/${repo#git@github.com:}" ;;
+            alt="https://github.com/$${repo#git@github.com:}" ;;
           *)
             alt="" ;;
         esac;
-        [ -n "$alt" ] && git clone --depth 1 --branch "$branch" "$alt" "$dir";
+        [ -n "$$alt" ] && git clone --depth 1 --branch "$$branch" "$$alt" "$$dir";
       };
       clone_or_update https://github.com/frappe/frappe.git version-15 /apps/frappe;
       clone_or_update https://github.com/frappe/erpnext.git version-15 /apps/erpnext;
