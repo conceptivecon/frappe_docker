@@ -1,161 +1,157 @@
-name: erpnext-jewelry
+name: erpnext-hspdiamonds
 
-x-backend-image: &backend_image
-  image: ${CUSTOM_IMAGE:-yourcompany/erpnext-jewelry}:${CUSTOM_TAG:-latest}
-  build:
-    context: .
-    dockerfile: Dockerfile.backend
+x-erpnext-image: &erpnext_image
+  image: frappe/erpnext:v15
+
+x-bench-volumes: &bench_volumes
+  - /home/erpnext/apps:/home/frappe/frappe-bench/apps
+  - /home/erpnext/sites:/home/frappe/frappe-bench/sites
+  - /home/erpnext/logs:/home/frappe/frappe-bench/logs
+  - /home/erpnext/assets:/home/frappe/frappe-bench/sites/assets
+  - /home/erpnext/.ssh:/home/frappe/.ssh:ro
 
 services:
-  mariadb:
-    image: mariadb:10.11
+  db:
+    image: mariadb:10.6
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-innodb-read-only-compressed
       - --max-allowed-packet=64M
-      - --innodb-buffer-pool-size=1024M
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - ./mariadb:/var/lib/mysql
+      - /home/erpnext/mariadb:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 20
-    mem_limit: 2g
-    restart: unless-stopped
+    restart: ${RESTART_POLICY:-always}
 
   redis-cache:
-    image: redis:7-alpine
-    command: redis-server --save "" --appendonly no --maxmemory 200mb --maxmemory-policy allkeys-lru
+    image: redis:6.2-alpine
+    command: redis-server --save "" --appendonly no
     volumes:
-      - ./redis-cache:/data
-    mem_limit: 256m
-    restart: unless-stopped
+      - /home/erpnext/redis:/data
+    restart: ${RESTART_POLICY:-always}
 
   redis-queue:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
+    image: redis:6.2-alpine
+    command: redis-server --save "" --appendonly no
     volumes:
-      - ./redis-queue:/data
-    mem_limit: 256m
-    restart: unless-stopped
+      - /home/erpnext/redis:/data
+    restart: ${RESTART_POLICY:-always}
+
+  redis-socketio:
+    image: redis:6.2-alpine
+    command: redis-server --save "" --appendonly no
+    volumes:
+      - /home/erpnext/redis:/data
+    restart: ${RESTART_POLICY:-always}
 
   configurator:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
-      mariadb:
+      db:
         condition: service_healthy
       redis-cache:
         condition: service_started
       redis-queue:
         condition: service_started
+      redis-socketio:
+        condition: service_started
     entrypoint: ["bash", "-lc"]
     command: >
       ls -1 apps > sites/apps.txt &&
-      bench set-config -g db_host mariadb &&
-      bench set-config -gp db_port 3306 &&
-      bench set-config -g redis_cache redis://redis-cache:6379 &&
-      bench set-config -g redis_queue redis://redis-queue:6379 &&
-      bench set-config -g redis_socketio redis://redis-queue:6379 &&
+      bench set-config -g db_host "${DB_HOST}" &&
+      bench set-config -gp db_port "${DB_PORT}" &&
+      bench set-config -g redis_cache "redis://${REDIS_CACHE}" &&
+      bench set-config -g redis_queue "redis://${REDIS_QUEUE}" &&
+      bench set-config -g redis_socketio "redis://${REDIS_SOCKETIO}" &&
       bench set-config -gp socketio_port 9000
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-      - ./assets:/home/frappe/frappe-bench/sites/assets
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
     restart: on-failure
 
   create-site:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
       configurator:
         condition: service_completed_successfully
     entrypoint: ["bash", "-lc"]
     command: >
       if [ ! -d "sites/${SITE_NAME}" ]; then
-        bench new-site "${SITE_NAME}" --mariadb-root-password "${DB_ROOT_PASSWORD}" --admin-password "${ADMIN_PASSWORD}" --db-name "${SITE_DB_NAME}" &&
+        bench new-site "${SITE_NAME}" --mariadb-root-password "${MYSQL_ROOT_PASSWORD}" --admin-password "${ADMIN_PASSWORD}" --db-name "${DB_NAME}" &&
         bench --site "${SITE_NAME}" install-app erpnext &&
         bench --site "${SITE_NAME}" install-app india_compliance &&
+        bench --site "${SITE_NAME}" install-app india_payments &&
+        bench --site "${SITE_NAME}" install-app "${CUSTOM_APP_NAME}" &&
         bench --site "${SITE_NAME}" set-config host_name "https://${SITE_NAME}";
       else
         echo "Site ${SITE_NAME} already exists; skipping create-site.";
       fi
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-      - ./assets:/home/frappe/frappe-bench/sites/assets
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
 
   backend:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
       create-site:
         condition: service_completed_successfully
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-      - ./assets:/home/frappe/frappe-bench/sites/assets
-    mem_limit: 4g
-    restart: unless-stopped
-
-  websocket:
-    <<: *backend_image
-    depends_on:
-      create-site:
-        condition: service_completed_successfully
-    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-    mem_limit: 512m
-    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
+    restart: ${RESTART_POLICY:-always}
 
   queue-short:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
       create-site:
         condition: service_completed_successfully
     command: bench worker --queue short,default
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-    mem_limit: 512m
-    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
+    restart: ${RESTART_POLICY:-always}
 
   queue-long:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
       create-site:
         condition: service_completed_successfully
     command: bench worker --queue long,default,short
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-    mem_limit: 512m
-    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
+    restart: ${RESTART_POLICY:-always}
 
   scheduler:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
       create-site:
         condition: service_completed_successfully
     command: bench schedule
-    volumes:
-      - ./apps:/home/frappe/frappe-bench/apps
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./logs:/home/frappe/frappe-bench/logs
-    mem_limit: 512m
-    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
+    restart: ${RESTART_POLICY:-always}
+
+  websocket:
+    <<: *erpnext_image
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    environment:
+      TZ: ${TZ}
+    volumes: *bench_volumes
+    restart: ${RESTART_POLICY:-always}
 
   frontend:
-    <<: *backend_image
+    <<: *erpnext_image
     depends_on:
       backend:
         condition: service_started
@@ -163,18 +159,18 @@ services:
         condition: service_started
     command: ["nginx-entrypoint.sh"]
     ports:
-      - "${HTTP_PORT:-8080}:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
-      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME}
+      FRAPPE_SITE_NAME_HEADER: ${FRAPPE_SITE_NAME_HEADER}
       UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
       UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
       UPSTREAM_REAL_IP_RECURSIVE: off
       PROXY_READ_TIMEOUT: 120
       CLIENT_MAX_BODY_SIZE: 50m
+      TZ: ${TZ}
     volumes:
-      - ./sites:/home/frappe/frappe-bench/sites
-      - ./assets:/home/frappe/frappe-bench/sites/assets
-    mem_limit: 256m
-    restart: unless-stopped
+      - /home/erpnext/sites:/home/frappe/frappe-bench/sites
+      - /home/erpnext/assets:/home/frappe/frappe-bench/sites/assets
+    restart: ${RESTART_POLICY:-always}

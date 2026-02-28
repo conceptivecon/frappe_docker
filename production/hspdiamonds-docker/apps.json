@@ -1,4 +1,18 @@
 [
-  {"url": "https://github.com/frappe/erpnext", "branch": "version-15"},
-  {"url": "https://github.com/frappe/india-compliance", "branch": "version-15"}
+  {
+    "url": "https://github.com/frappe/erpnext",
+    "branch": "version-15"
+  },
+  {
+    "url": "https://github.com/frappe/india-compliance",
+    "branch": "version-15"
+  },
+  {
+    "url": "https://github.com/frappe/india-payments",
+    "branch": "version-15"
+  },
+  {
+    "url": "git@github.com:conceptivecon/jewelry-erp.git",
+    "branch": "main"
+  }
 ]
