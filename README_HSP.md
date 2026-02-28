@@ -57,6 +57,27 @@ git pull
 docker restart backend
 ```
 
+## 9) Cleanup and fresh start
+
+From the repo root (`/home/erpnext/docker`):
+
+```bash
+cd production/hspdiamonds-docker
+
+# Safe cleanup (containers/networks only)
+./scripts/cleanup_fresh_start.sh --force
+
+# Full reset (includes image prune + wipe /home/erpnext persistent data)
+./scripts/cleanup_fresh_start.sh --force --purge-images --purge-data
+```
+
+After cleanup, start again:
+
+```bash
+cd /home/erpnext/docker
+docker compose --env-file .env up -d
+```
+
 ## Notes
 
 - The stack is configured for host reverse proxy mode (`127.0.0.1:8080`) so traffic can flow via Cloudflare -> host NGINX -> Docker.
