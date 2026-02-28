@@ -51,7 +51,7 @@ services:
       - /home/erpnext/redis:/data
 
   configurator:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: on-failure
     platform: linux/amd64
@@ -87,7 +87,7 @@ services:
       redis-socketio:
         condition: service_started
   backend:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
@@ -98,7 +98,7 @@ services:
     volumes: *bench_volumes
 
   frontend:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: ${RESTART_POLICY:-unless-stopped}
     platform: linux/amd64
@@ -123,7 +123,7 @@ services:
       - "127.0.0.1:${HTTP_PUBLISH_PORT:-8080}:8080"
 
   websocket:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
@@ -137,7 +137,7 @@ services:
     volumes: *bench_volumes
 
   queue-short:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
@@ -150,7 +150,7 @@ services:
     mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
@@ -163,7 +163,7 @@ services:
     mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
     pull_policy: ${PULL_POLICY:-always}
     restart: ${RESTART_POLICY:-unless-stopped}
     depends_on:
