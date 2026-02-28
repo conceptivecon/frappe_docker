@@ -1,17 +1,18 @@
 name: erpnext-jewelry
 
 x-backend-image: &backend_image
-  image: ${CUSTOM_IMAGE:-yourcompany/erpnext-jewelry}:${CUSTOM_TAG:-latest}
+  image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
   build:
     context: .
     dockerfile: Dockerfile.backend
 
 services:
   mariadb:
-    image: mariadb:10.11
+    image: mariadb:10.6
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed
       - --max-allowed-packet=64M
       - --innodb-buffer-pool-size=1024M
@@ -79,6 +80,7 @@ services:
         bench new-site "${SITE_NAME}" --mariadb-root-password "${DB_ROOT_PASSWORD}" --admin-password "${ADMIN_PASSWORD}" --db-name "${SITE_DB_NAME}" &&
         bench --site "${SITE_NAME}" install-app erpnext &&
         bench --site "${SITE_NAME}" install-app india_compliance &&
+        if [ -n "${CUSTOM_APP_NAME:-}" ]; then bench --site "${SITE_NAME}" install-app "${CUSTOM_APP_NAME}" || true; fi;
         bench --site "${SITE_NAME}" set-config host_name "https://${SITE_NAME}";
       else
         echo "Site ${SITE_NAME} already exists; skipping create-site.";
