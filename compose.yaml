@@ -10,7 +10,6 @@ services:
     image: mariadb:10.6
     container_name: db
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 2g
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -31,7 +30,6 @@ services:
     image: redis:6.2-alpine
     container_name: redis-cache
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 256m
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - /home/erpnext/redis:/data
@@ -40,7 +38,6 @@ services:
     image: redis:6.2-alpine
     container_name: redis-queue
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 256m
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - /home/erpnext/redis:/data
@@ -49,7 +46,6 @@ services:
     image: redis:6.2-alpine
     container_name: redis-socketio
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 256m
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - /home/erpnext/redis:/data
@@ -60,7 +56,6 @@ services:
     restart: on-failure
     platform: linux/amd64
     container_name: configurator
-    mem_limit: 1g
     volumes: *bench_volumes
     entrypoint:
       - bash
@@ -99,7 +94,6 @@ services:
         condition: service_completed_successfully
     platform: linux/amd64
     container_name: backend
-    mem_limit: 4g
     volumes: *bench_volumes
 
   frontend:
@@ -110,7 +104,6 @@ services:
     container_name: frontend
     command:
       - nginx-entrypoint.sh
-    mem_limit: 1g
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
@@ -136,7 +129,6 @@ services:
         condition: service_completed_successfully
     platform: linux/amd64
     container_name: websocket
-    mem_limit: 1g
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
@@ -151,7 +143,6 @@ services:
         condition: service_completed_successfully
     platform: linux/amd64
     container_name: queue-short
-    mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-1g}
     volumes: *bench_volumes
     command: bench worker --queue short,default
 
@@ -164,7 +155,6 @@ services:
         condition: service_completed_successfully
     platform: linux/amd64
     container_name: queue-long
-    mem_limit: ${QUEUE_LONG_MEM_LIMIT:-1g}
     volumes: *bench_volumes
     command: bench worker --queue long,default,short
 
@@ -177,6 +167,5 @@ services:
         condition: service_completed_successfully
     platform: linux/amd64
     container_name: scheduler
-    mem_limit: ${SCHEDULER_MEM_LIMIT:-1g}
     volumes: *bench_volumes
     command: bench schedule
