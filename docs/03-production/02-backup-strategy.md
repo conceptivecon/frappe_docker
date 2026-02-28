@@ -1,3 +1,5 @@
+For host-level backups using bind mounts (`./local-data/*`), see [Local Volumes for Easy Backup and Restore](06-local-volumes-backup-restore.md).
+
 Create backup service or stack.
 
 ```yaml
