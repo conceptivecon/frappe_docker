@@ -1,13 +1,3 @@
-x-customizable-image: &customizable_image
-  image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
-  pull_policy: ${PULL_POLICY:-always}
-  restart: ${RESTART_POLICY:-unless-stopped}
-
-x-depends-on-configurator: &depends_on_configurator
-  depends_on:
-    configurator:
-      condition: service_completed_successfully
-
 x-bench-volumes: &bench_volumes
   - /home/erpnext/sites:/home/frappe/frappe-bench/sites
   - /home/erpnext/logs:/home/frappe/frappe-bench/logs
@@ -20,7 +10,6 @@ services:
     image: mariadb:10.6
     container_name: db
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 2g
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -41,7 +30,6 @@ services:
     image: redis:6.2-alpine
     container_name: redis-cache
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 256m
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - /home/erpnext/redis:/data
@@ -50,7 +38,6 @@ services:
     image: redis:6.2-alpine
     container_name: redis-queue
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 256m
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - /home/erpnext/redis:/data
@@ -59,16 +46,16 @@ services:
     image: redis:6.2-alpine
     container_name: redis-socketio
     restart: ${RESTART_POLICY:-unless-stopped}
-    mem_limit: 256m
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - /home/erpnext/redis:/data
 
   configurator:
-    <<: *customizable_image
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: on-failure
     platform: linux/amd64
     container_name: configurator
-    mem_limit: 1g
     volumes: *bench_volumes
     entrypoint:
       - bash
@@ -99,20 +86,23 @@ services:
         condition: service_started
       redis-socketio:
         condition: service_started
-    restart: on-failure
-
   backend:
-    <<: [*depends_on_configurator, *customizable_image]
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     platform: linux/amd64
     container_name: backend
-    mem_limit: 4g
     volumes: *bench_volumes
 
   frontend:
-    <<: *customizable_image
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
     platform: linux/amd64
     container_name: frontend
-    restart: ${RESTART_POLICY:-unless-stopped}
     command:
       - nginx-entrypoint.sh
     mem_limit: 1g
@@ -133,37 +123,53 @@ services:
       - "127.0.0.1:${HTTP_PUBLISH_PORT:-8080}:8080"
 
   websocket:
-    <<: [*depends_on_configurator, *customizable_image]
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     platform: linux/amd64
     container_name: websocket
-    mem_limit: 1g
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
     volumes: *bench_volumes
 
   queue-short:
-    <<: [*depends_on_configurator, *customizable_image]
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     platform: linux/amd64
     container_name: queue-short
-    mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue short,default
     mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
-    <<: [*depends_on_configurator, *customizable_image]
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     platform: linux/amd64
     container_name: queue-long
-    mem_limit: 1g
     volumes: *bench_volumes
     command: bench worker --queue long,default,short
     mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
-    <<: [*depends_on_configurator, *customizable_image]
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-v15}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     platform: linux/amd64
     container_name: scheduler
-    mem_limit: 1g
     volumes: *bench_volumes
     command: bench schedule
