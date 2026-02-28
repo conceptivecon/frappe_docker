@@ -175,6 +175,7 @@ services:
     container_name: frontend
     command:
       - nginx-entrypoint.sh
+    mem_limit: 1g
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
@@ -216,6 +217,7 @@ services:
     container_name: queue-short
     volumes: *bench_volumes
     command: bench worker --queue short,default
+    mem_limit: ${QUEUE_SHORT_MEM_LIMIT:-512m}
 
   queue-long:
     image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
@@ -228,6 +230,7 @@ services:
     container_name: queue-long
     volumes: *bench_volumes
     command: bench worker --queue long,default,short
+    mem_limit: ${QUEUE_LONG_MEM_LIMIT:-512m}
 
   scheduler:
     image: ${CUSTOM_IMAGE:-frappe/erpnext}:v15
