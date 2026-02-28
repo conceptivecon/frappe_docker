@@ -149,3 +149,13 @@ class TestPostgres:
             "--admin-password",
             "admin",
         )
+
+
+def test_root_compose_has_no_conflict_markers_or_mem_limit_keys():
+    compose_text = Path("compose.yaml").read_text()
+
+    assert "<<<<<<<" not in compose_text
+    assert "=======" not in compose_text
+    assert ">>>>>>>" not in compose_text
+
+    assert "mem_limit:" not in compose_text
