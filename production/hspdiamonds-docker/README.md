@@ -1,117 +1,140 @@
-# ERPNext v15 Production Stack (HSP Diamonds)
+# Production-hardened ERPNext v15 deployment (HSP Diamonds)
 
-Production Docker stack for `erp.hspdiamonds.com` (ERPNext v15 + India Compliance v15), tuned for a 16 GB VPS sharing resources with Supabase GoTrue, Postgres, and Next.js.
+This bundle provides a bind-mount-only Docker Compose deployment for Ubuntu 24.04 hosts with:
+- ERPNext/Frappe v15
+- Apps: `erpnext`, `payments`, `india_compliance`, `hspdiamonds`
+- Exposed ports: `8000` (web) and `9001` (socket.io)
+- No Traefik
 
-## What this bundle includes
-
-- `Dockerfile.backend` - backend image based on `frappe/erpnext:v15.58.4`
-- `docker-compose.yml` - MariaDB 10.11 + Redis + ERP services with memory caps
-- `.env.example` - runtime variables template
-- `apps.json` - app manifest (`erpnext`, `india-compliance`)
-- `setup.sh` - one-liner bootstrap entrypoint
-- `scripts/deploy.sh` - deploy + app checkout + env sync
-- `scripts/backup.sh` - backup flow (`down -> tar -> up`)
-- `scripts/restore.sh` - restore flow
-
----
-
-## Final deployment instructions (recommended)
-
-### 1) Clone into VPS target path
+## 1) Directory setup
 
 ```bash
-sudo mkdir -p /home/erpnext && sudo chown -R $USER:$USER /home/erpnext
-cd /home/erpnext
-git clone https://github.com/yourcompany/frappe_docker.git docker
-cd docker/production/hspdiamonds-docker
+cd /workspace/frappe_docker/production/hspdiamonds-docker
+./scripts/setup-directories.sh
+cp -f config/* /home/erpnext/config/
 ```
 
-### 2) Prepare environment
+Creates:
+- `/home/erpnext/config`
+- `/home/erpnext/sites`
+- `/home/erpnext/apps`
+- `/home/erpnext/logs`
+- `/home/erpnext/mariadb`
+- `/home/erpnext/redis-cache`
+- `/home/erpnext/redis-queue`
+- `/home/erpnext/redis-socketio`
+
+And applies:
+
+```bash
+chown -R 1000:1000 /home/erpnext
+```
+
+## 2) Configuration files (`/home/erpnext/config`)
+
+Included in `config/`:
+- `mariadb.cnf` (`innodb_buffer_pool_size=4G`, `max_connections=200`)
+- `redis-cache.conf` (`maxmemory 512mb`, LRU)
+- `redis-queue.conf` (`maxmemory 256mb`, LRU)
+- `logrotate.conf` (daily, `maxsize 10M`, `rotate 5`)
+
+To enforce log rotation on host:
+
+```bash
+sudo cp /home/erpnext/config/logrotate.conf /etc/logrotate.d/erpnext
+sudo logrotate -f /etc/logrotate.d/erpnext
+```
+
+## 3) Automated `common_site_config.json`
 
 ```bash
 cp .env.example .env
 nano .env
+./scripts/generate-common-site-config.sh
 ```
 
-Set at minimum:
-- `CUSTOM_IMAGE`
-- `CUSTOM_TAG`
-- `SITE_NAME=erp.hspdiamonds.com`
-- `SITE_DB_NAME`
-- `ADMIN_PASSWORD`
-- `DB_ROOT_PASSWORD`
+Generated file: `/home/erpnext/sites/common_site_config.json` with:
+- `db_host: "db"`
+- `redis_cache: "redis://redis-cache:6379"`
+- `redis_queue: "redis://redis-queue:6379"`
+- `redis_socketio: "redis://redis-socketio:6379"`
+- `socketio_port: 9001`
 
-### 3) Deploy
+## 4) Docker Compose deployment
 
 ```bash
-./scripts/deploy.sh
+docker compose --env-file .env up -d
 ```
 
-This creates folders, checks out `erpnext` + `india-compliance` in `./apps`, updates `APPS_JSON_BASE64` from `apps.json`, and starts all services.
+Services:
+- `db`
+- `redis-cache`
+- `redis-queue`
+- `redis-socketio`
+- `backend`
+- `websocket`
+- `worker-short`
+- `worker-long`
+- `scheduler`
 
-### 4) Validate and access bench
+## 5) Deployment sequence (apps + site creation)
+
+### Pull required apps
 
 ```bash
-docker compose --env-file .env ps
-docker compose --env-file .env logs -f backend
-docker compose --env-file .env exec backend bench console
+git clone --depth 1 --branch version-15 https://github.com/frappe/erpnext /home/erpnext/apps/erpnext
+git clone --depth 1 --branch version-15 https://github.com/frappe/payments /home/erpnext/apps/payments
+git clone --depth 1 --branch version-15 https://github.com/frappe/india-compliance /home/erpnext/apps/india_compliance
+git clone --depth 1 --branch main git@github.com:your-org/hspdiamonds.git /home/erpnext/apps/hspdiamonds
 ```
 
-### 5) Reverse proxy/domain
-
-Route `erp.hspdiamonds.com` -> VPS `:8080` (or `HTTP_PORT`), and terminate TLS at Nginx/Caddy/Traefik on host.
-
----
-
-## One-liner bootstrap
+### Create site with your credentials
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourcompany/frappe_docker/main/production/hspdiamonds-docker/setup.sh | bash
+docker compose --env-file .env run --rm backend \
+  bench new-site erp.hspdiamonds.com \
+  --db-name "$SITE_DB_NAME" \
+  --mariadb-root-password "$MYSQL_ROOT_PASSWORD" \
+  --admin-password "$ADMIN_PASSWORD"
 ```
 
----
-
-## Hot app update
+### Install all apps and disable developer mode
 
 ```bash
-cd apps/my-custom-app
-git pull
-docker compose --env-file .env restart backend websocket queue-short queue-long scheduler
+docker compose --env-file .env run --rm backend bench --site erp.hspdiamonds.com install-app erpnext
+docker compose --env-file .env run --rm backend bench --site erp.hspdiamonds.com install-app payments
+docker compose --env-file .env run --rm backend bench --site erp.hspdiamonds.com install-app india_compliance
+docker compose --env-file .env run --rm backend bench --site erp.hspdiamonds.com install-app hspdiamonds
+docker compose --env-file .env run --rm backend bench --site erp.hspdiamonds.com set-config developer_mode 0
 ```
 
----
+## 6) Nginx host config for Cloudflare
 
-## Backup / restore
+Use this host-level Nginx server block:
 
-```bash
-./scripts/backup.sh
-./scripts/restore.sh backups/erpnext-backup-YYYY-MM-DD_HH-MM-SS.tar.gz
+```nginx
+server {
+    listen 80;
+    server_name erp.hspdiamonds.com;
+
+    client_max_body_size 50m;
+
+    location /socket.io {
+        proxy_pass http://127.0.0.1:9001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+}
 ```
-
-Cron example:
-
-```cron
-0 2 * * * cd /home/erpnext/docker/production/hspdiamonds-docker && ./scripts/backup.sh >> /var/log/erpnext-backup.log 2>&1
-```
-
----
-
-## Gaps in `apps.json` (important)
-
-Current file:
-
-```json
-[
-  {"url": "https://github.com/frappe/erpnext", "branch": "version-15"},
-  {"url": "https://github.com/frappe/india-compliance", "branch": "version-15"}
-]
-```
-
-Known gaps to address for stricter production control:
-
-1. **No commit pinning**: branch-only references can drift. Prefer immutable SHAs/tags in your app checkout pipeline.
-2. **No custom jewelry apps listed**: add your private/custom app repositories for production parity.
-3. **`APPS_JSON_BASE64` not consumed by current Dockerfile build stage**: in this bundle app installation is performed at runtime (`create-site` + mounted `./apps`) rather than baked via build arg.
-4. **No explicit dependency lockfile for custom apps**: if your custom apps add Python/Node deps, define and test them in CI.
-
-If you want immutable builds, move to a build-time app-install flow (using `bench init --apps_path`) and push only fully baked images.
